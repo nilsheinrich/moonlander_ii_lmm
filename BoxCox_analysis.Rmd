@@ -64,3 +64,9 @@ boxcox(lm(distant_fixations$distance_to_spaceship ~ 1))
 ```
 lambda, the estimated value is near to -1, implies 1/x transformation.
 
+```{r box_cox_distant_distobs, include=FALSE}
+
+boxcox(lm(distant_fixations$Dist_to_closest_obstacles ~ 1))
+
+```
+lambda, the estimated value is near to 0.5, implies √(x) transformation.
