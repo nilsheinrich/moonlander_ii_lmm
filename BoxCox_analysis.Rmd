@@ -23,6 +23,10 @@ setwd('/Users/heinrich/Projects/Moonlander_ii_LMM/')
 close_fixations <- read_feather("data/Experiment2_CloseFixations.arrow")
 distant_fixations <- read_feather("data/Experiment2_DistantFixations.arrow")
 
+# exclude fixations without duration (wrongly flagged fixations)
+close_fixations <- close_fixations[close_fixations$fixation_duration > 0, ]
+distant_fixations <- distant_fixations[distant_fixations$fixation_duration > 0, ]
+
 ```
 
 ```{r box_cox_close_fixDur, include=FALSE}
@@ -31,19 +35,15 @@ boxcox(lm(close_fixations$fixation_duration ~ 1))
 
 ```
 lambda, the estimated value is near to 0, implies log transform.
-```{r close_dist_transform, include=FALSE}
-
-close_fixations$fixation_duration.log <- log(close_fixations$fixation_duration)
-
-```
-
 
 ```{r box_cox_close_dist, include=FALSE}
 
-boxcox(lm(close_fixations$distance_to_spaceship ~ 1))
+Lambda <- boxcox(lm(close_fixations$distance_to_spaceship ~ 1))
+
+Lambda$x[which(Lambda$y == max(Lambda$y))]
 
 ```
-lambda, the estimated value is near to 1, implies NO transformation.
+lambda, the estimated value is closer to 0.5 than to 1, which implies √(x) transformation.
 
 ```{r box_cox_distant_fixDur, include=FALSE}
 
@@ -51,15 +51,12 @@ boxcox(lm(distant_fixations$fixation_duration ~ 1))
 
 ```
 lambda, the estimated value is near to 0, implies log transform.
-```{r distant_fixDur_transform, include=FALSE}
-
-distant_fixations$fixation_duration.log <- log(distant_fixations$fixation_duration)
-
-```
 
 ```{r box_cox_distant_dist, include=FALSE}
 
-boxcox(lm(distant_fixations$distance_to_spaceship ~ 1))
+Lambda <- boxcox(lm(distant_fixations$distance_to_spaceship ~ 1))
+
+Lambda$x[which(Lambda$y == max(Lambda$y))]
 
 ```
 lambda, the estimated value is near to -1, implies 1/x transformation.
@@ -69,4 +66,4 @@ lambda, the estimated value is near to -1, implies 1/x transformation.
 boxcox(lm(distant_fixations$Dist_to_closest_obstacles ~ 1))
 
 ```
-lambda, the estimated value is near to 0.5, implies √(x) transformation.
+lambda, the estimated value is near to 0, implies log transformation.
