@@ -19,7 +19,7 @@ jupyter: julia-1.9
 
 # Description
 2 Covariates (continuous variables we believe affect the predicted variable) - N_visible_obstacles & N_visible_drift_tiles
-1 Fixed Effect (categorical variable) - drift
+1 Fixed Effect (categorical variable) -block
 
 # Setup
 
@@ -67,7 +67,7 @@ describe(my_data)
 
 ### Contrasts
 
-We will declare **ID** as a grouping variable as well as define the effects coding for the discrete covariate drift.
+We will declare **ID** as a grouping variable as well as define the effects coding for the discrete covariateblock.
 
 #### Hypothesis Coding
 ```{julia}
@@ -78,7 +78,7 @@ my_cake = Dict(
       -1 +1 0
       -1 0 +1
     ];
-    levels=["nodrift", "fake", "invisible"],
+    levels=["no_drift", "fake", "invisible"],
     labels=["fake-none", "invisible-none"],
   ),
 );
@@ -174,7 +174,7 @@ BIC (and AIC) favors the model with zero correlation between random effects: m_v
 
 We will now start to delete individual random slopes...
 
-Throwing out drift:
+Throwing out block:
  ```{julia}
 #| label: m_varyingSlope1
 
@@ -341,7 +341,7 @@ Now let's plot the bounds (without intercept) to visualize when 0 is within the 
 ```{julia}
 ridgeplot(samples; show_intercept=false, xlabel="Bootstrap density and 95%CI")
 ```
-We find a sole effect of **N_visible_obstacles**. With increasing number of obstacles, the fixation duration in distant fixations increases (0.00770251, 0.0475412).
+We find a sole effect of **N_visible_obstacles**. With increasing number of obstacles, the fixation duration in distant fixations increases (0.00773123, 0.048553).
 
 # Modeling fixation location - distance to spaceship
 
@@ -513,7 +513,7 @@ end
 ```
 m_varyingSlope__zc is favored by both BIC and AIC.
 
-Deleting drift.
+Deleting block.
 ```{julia}
 #| label: m_varyingSlope2
 
@@ -647,9 +647,24 @@ Now let's plot the bounds (without intercept) to visualize when 0 is within the 
 ```{julia}
 ridgeplot(samples; show_intercept=false, xlabel="Bootstrap density and 95%CI")
 ```
-We see main effects for **N_visible_obstacles** (0.000681108, 0.00168829) and **N_visible_drift_tiles** (0.00349769, 0.00919675) on fixation location - distance to spaceship.
+We see main effects for **N_visible_obstacles** (0.0010768, 0.00196023) and **N_visible_drift_tiles** (0.00549766, 0.0104158) on fixation location - distance to spaceship. Their interaction effect **N_visible_obstacles*N_visible_drift_tiles** is also significant (-0.00106899, -0.000337105) indicating that the effects of one covariate on the predicted distance to spaceship decreases with increaseing value of the other covariate.
 
 # Modeling fixation location - distance to closest obstacle
+
+```{julia}
+my_cake = Dict(
+  :ID => Grouping(),
+  :N_visible_obstacles => Grouping(),
+  :block => HypothesisCoding(
+    [
+      -1 +1 0
+      -1 0 +1
+    ];
+    levels=["no_drift", "fake", "invisible"],
+    labels=["fake-none", "invisible-none"],
+  ),
+);
+```
 
 # Testing random effects
 **ID** & **N_visible_obstacles** as random intercept effects.
@@ -657,7 +672,7 @@ We see main effects for **N_visible_obstacles** (0.000681108, 0.00168829) and **
 #| label: m_varyingInt_
 
 m_varyingInt_ = let
-    varInt = @formula(√(Dist_to_closest_obstacles) ~  N_visible_drift_tiles * block +
+    varInt = @formula(log(Dist_to_closest_obstacles) ~  N_visible_drift_tiles * block +
     (1 | ID) +
     (1 | N_visible_obstacles));
     fit(MixedModel, varInt, my_data; contrasts=my_cake);
@@ -675,7 +690,7 @@ Building most complex model:
 #| label: m_varyingSlope_complex
 
 m_varyingSlope_complex = let
-    varSlop = @formula(√(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
+    varSlop = @formula(log(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
     (1 + N_visible_drift_tiles * block | ID) +
     (1 + N_visible_drift_tiles * block | N_visible_obstacles));
     fit(MixedModel, varSlop, my_data; contrasts=my_cake);
@@ -689,7 +704,7 @@ Deleting interaction term from random slopes.
 #| label: m_varyingSlope_complex_ni
 
 m_varyingSlope_complex_ni = let
-    varSlop = @formula(√(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
+    varSlop = @formula(log(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
     (1 + N_visible_drift_tiles + block | ID) +
     (1 + N_visible_drift_tiles + block | N_visible_obstacles));
     fit(MixedModel, varSlop, my_data; contrasts=my_cake);
@@ -704,7 +719,7 @@ Stating zerocorr with interaction term.
 #| label: m_varyingSlope_zc
 
 m_varyingSlope_zc = let
-    varSlop = @formula(√(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
+    varSlop = @formula(log(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
     zerocorr(1 + N_visible_drift_tiles + block | ID) +
     zerocorr(1 + N_visible_drift_tiles + block | N_visible_obstacles));
     fit(MixedModel, varSlop, my_data; contrasts=my_cake);
@@ -740,15 +755,14 @@ Zerocorr with interaction term.
 #| label: m_varyingSlope__zc
 
 m_varyingSlope__zc = let
-    varSlop = @formula(√(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
+    varSlop = @formula(log(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
     zerocorr(1 + N_visible_drift_tiles * block | ID) +
     zerocorr(1 + N_visible_drift_tiles * block | N_visible_obstacles));
     fit(MixedModel, varSlop, my_data; contrasts=my_cake);
   end
 
-issingular(m_varyingSlope__zc)  # NOT overparameterized
+issingular(m_varyingSlope__zc)  # Not overparameterized
 ```
-
 
 ```{julia}
 
@@ -770,7 +784,7 @@ gof_summary = let
 end
 
 ```
-m_varyingSlope__zc wins when referring to BIC (and AIC). Proceeding with m_varyingSlope__zc.
+Nope, the interaction term within the random slopes should be neglected.
 
 ## Deleting individual random slopes
 
@@ -779,7 +793,7 @@ Deleting N_visible_drift_tiles from random slopes.
 #| label: m_varyingSlope1
 
 m_varyingSlope1 = let
-    varSlop = @formula(√(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
+    varSlop = @formula(log(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
     zerocorr(1 + block | ID) +
     zerocorr(1 + block | N_visible_obstacles));
     fit(MixedModel, varSlop, my_data; contrasts=my_cake);
@@ -791,9 +805,9 @@ issingular(m_varyingSlope1)  # NOT overparameterized
 ```{julia}
 
 gof_summary = let
-  nms = [:m_varyingSlope__zc, :m_varyingSlope1]
+  nms = [:m_varyingSlope_zc, :m_varyingSlope1]
   mods = eval.(nms)
-  lrt = MixedModels.likelihoodratiotest(m_varyingSlope__zc, m_varyingSlope1)
+  lrt = MixedModels.likelihoodratiotest(m_varyingSlope_zc, m_varyingSlope1)
   DataFrame(;
     name = nms, 
     dof=dof.(mods),
@@ -808,14 +822,14 @@ gof_summary = let
 end
 
 ```
-m_varyingSlope__zc is favored by both BIC and AIC.
+m_varyingSlope_zc is favored by both BIC and AIC.
 
 Deleting block (drift type).
 ```{julia}
 #| label: m_varyingSlope2
 
 m_varyingSlope2 = let
-    varSlop = @formula(√(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
+    varSlop = @formula(log(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
     zerocorr(1 + N_visible_drift_tiles | ID) +
     zerocorr(1 + N_visible_drift_tiles | N_visible_obstacles));
     fit(MixedModel, varSlop, my_data; contrasts=my_cake);
@@ -828,9 +842,9 @@ Throwing models against each other:
 ```{julia}
 
 gof_summary = let
-  nms = [:m_varyingSlope__zc, :m_varyingSlope2]
+  nms = [:m_varyingSlope_zc, :m_varyingSlope2]
   mods = eval.(nms)
-  lrt = MixedModels.likelihoodratiotest(m_varyingSlope__zc, m_varyingSlope2)
+  lrt = MixedModels.likelihoodratiotest(m_varyingSlope_zc, m_varyingSlope2)
   DataFrame(;
     name = nms, 
     dof=dof.(mods),
@@ -845,28 +859,28 @@ gof_summary = let
 end
 
 ```
-Referring to BIC (or AIC), m_varyingSlope__zc beats the other model.
+Referring to BIC (or AIC), m_varyingSlope_zc beats the other model.
 
 ## Model selection
-We will proceed with m_varyingSlope__zc. Reducing model complexity will ultimately end up in a worse fit...
+We will proceed with m_varyingSlope_zc. Reducing model complexity will ultimately end up in a worse fit...
 
 ```{julia}
 #| label: selected model
 
-m_varyingSlope__zc = let
-    varSlop = @formula(√(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
-    zerocorr(1 + N_visible_drift_tiles * block | ID) +
-    zerocorr(1 + N_visible_drift_tiles * block | N_visible_obstacles));
+m_varyingSlope_zc = let
+    varSlop = @formula(log(Dist_to_closest_obstacles) ~ 1 + N_visible_drift_tiles * block + 
+    zerocorr(1 + N_visible_drift_tiles + block | ID) +
+    zerocorr(1 + N_visible_drift_tiles + block | N_visible_obstacles));
     fit(MixedModel, varSlop, my_data; contrasts=my_cake);
   end
 
-issingular(m_varyingSlope__zc)  # NOT overparameterized
+issingular(m_varyingSlope_zc)  # NOT overparameterized
 ```
 
 Taking our first look at the main effects.
 ```{julia}
 
-VarCorr(m_varyingSlope__zc)
+VarCorr(m_varyingSlope_zc)
 
 ```
 
@@ -876,7 +890,7 @@ We can visually verify having stated zero correlation between random effects.
 #| fig-cap1: Prediction intervals on subject random effects for model m_varyingSlope_complex
 #| label: fig-cm_varyingSlope
 #|
-cm_varyingSlope = first(ranefinfo(m_varyingSlope__zc));
+cm_varyingSlope = first(ranefinfo(m_varyingSlope_zc));
 caterpillar!(Figure(; resolution=(800, 1200)), cm_varyingSlope; orderby=1)
 ```
 
@@ -887,15 +901,15 @@ caterpillar!(Figure(; resolution=(800, 1200)), cm_varyingSlope; orderby=1)
 #| label: fig-shrinkage
 #|
 #| fig-cap: Shrinkage plots of the subject random effects in the chosen model
-shrinkageplot!(Figure(; resolution=(1000, 1200)), m_varyingSlope__zc)
+shrinkageplot!(Figure(; resolution=(1000, 1200)), m_varyingSlope_zc)
 
 ```
-We see aggressive adjustments. We will look how the effects turn out to be in the end.
+We see aggressive adjustments. Here, power from somewhere else in the model was borrowed and applied.
 
 ## Bootstrapping
 
 ```{julia}
-samples = parametricbootstrap(RNG, N_iterations, m_varyingSlope__zc)
+samples = parametricbootstrap(RNG, N_iterations, m_varyingSlope_zc)
 tbl = samples.tbl
 ```
 
@@ -912,5 +926,5 @@ Now let's plot the bounds (without intercept) to visualize when 0 is within the 
 ridgeplot(samples; show_intercept=false, xlabel="Bootstrap density and 95%CI")
 ```
 
-We see a single main effect for **N_visible_drift_tiles** (-0.250191, -0.0169198), decreasing the distance to the closest obstacle with increasing N.
+We see a main effect for **N_visible_drift_tiles** (-0.170417, -0.060528), decreasing the distance to the closest obstacle with increasing N. Additionally, the distance to the closest obstacles increased in **fake** blocks (0.0039364, 0.0613706) and **invisible** blocks (0.0041094, 0.0545554) compared to **no_drift** blocks. No interaction effects were significant.
 
