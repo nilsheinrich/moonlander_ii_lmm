@@ -291,7 +291,7 @@ only random intercept model
 #| label: m_varyingInt1
 
 m_varyingInt1 = let
-    varInt = @formula(SoC ~ 1 + level_difficulty + input_noise + N_fixations + N_consecutive_crash_success 
+    varInt = @formula(SoC ~ 1 + level_difficulty + block + N_fixations + N_consecutive_crash_success 
     + (1 | ID)
     + (1 | done));
     fit(MixedModel, varInt, my_data; contrasts=my_cake);
@@ -309,22 +309,23 @@ done is suitable for a random effect. Next up, exploring random slopes.
 #| label: m_varyingSlope1
 
 m_varyingSlope1 = let
-    varSlop = @formula(SoC ~ 1 + level_difficulty + input_noise + N_fixations + N_consecutive_crash_success
-    + (1 | ID)
-    + (1 | done));
+    varSlop = @formula(SoC ~ 1 + level_difficulty + block + N_fixations + N_consecutive_crash_success
+    + (1 + ? | ID)
+    + (1 + ? | done));
     fit(MixedModel, varSlop, my_data; contrasts=my_cake);
   end
 
-issingular(m_varyingSlope1) # Not overparamterized
+issingular(m_varyingSlope1) # Overparameterized!
 
 ```
-...
+Entering any individual random slope effect ends in the model showing singularity. We will stick to the random intercept only model...
+
 ## Model selection
 ```{julia}
 #| label: m_varyingInt1
 
 m_varyingInt1 = let
-    varInt = @formula(SoC ~ 1 + level_difficulty + input_noise + N_fixations + N_consecutive_crash_success 
+    varInt = @formula(SoC ~ 1 + level_difficulty + block + N_fixations + N_consecutive_crash_success 
     + (1 | ID)
     + (1 | done));
     fit(MixedModel, varInt, my_data; contrasts=my_cake);
@@ -349,4 +350,8 @@ ridgeplot(samples; show_intercept=false, xlabel="Bootstrap density and 95%CI", t
 **Discussing the results:** We find significant effects for (stating 95% CIs):
 
 ### with N_fixations & N_saccades:
-- input_noise (-1.05016, -0.637036)
+- level_difficulty (0.132289, 0.198125)
+- block: invisible vs. normal (-0.677625, -0.597058)
+- block: no_drift vs. normal (0.00239709, 0.0861937)
+- N_fixations (0.000437163, 0.000739854)
+- N_consecutive_crash_success (0.0241084, 0.031886)
