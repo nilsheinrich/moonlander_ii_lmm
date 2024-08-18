@@ -1,0 +1,352 @@
+---
+title: "Nils Wendel Heinrich: SoC Responses"
+subtitle: "Moonlander II - Analysis"
+author: "Nils Wendel Heinrich"
+date: "2024-08-18"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-fold: false
+    number-sections: true
+    fig-width: 8
+    fig-height: 6
+editor_options:
+  chunk_output_type: console
+jupyter: julia-1.9
+---
+
+# Description
+Covariates (continuous variables):
+    - N_prior_crashs
+    - N_consecutive_crash_success
+    (- trials_since_last_crash)
+    (- crashed_in_last_trial)
+    - N_fixations
+Fixed Effects (categorical variables):
+    - done
+    - level_difficulty
+    - drift
+    - block (type of drift encountered)
+
+We will predict SoC judgement rating. Responses were given on a 7-step Likert scale. We will use parametric statistics assuming that the tests are sufficiently robust for this type of data.
+
+# Setup
+
+## Packages
+
+```{julia}
+#| label: packages
+
+using Arrow
+using AlgebraOfGraphics
+using CairoMakie
+using DataFrames
+using DataFrameMacros
+using MixedModels
+using MixedModelsMakie
+using Random
+#using RCall
+
+CairoMakie.activate!(; type="svg");
+```
+
+```{julia}
+#| label: constants
+const RNG = MersenneTwister(36)
+N_iterations = 10000
+
+const AoG = AlgebraOfGraphics;
+```
+
+One possible random effect: **ID** (the subject itself).
+
+```{julia}
+#| label: data
+
+my_data = DataFrame(Arrow.Table("data/Experiment2_SoCData.arrow"))
+
+# new variable: level_difficulty based on level
+# 1, 2, 3: medium
+# 4, 5, 6: hard
+
+
+describe(my_data)
+```
+
+### Contrasts
+
+We will declare **ID** a grouping variable as well as define the effects coding for the discrete covariate input noise.
+
+#### Hypothesis Coding
+```{julia}
+
+my_cake = Dict(
+  :ID => Grouping(),
+);
+
+```
+
+## Building various models
+
+### Only varying intercept LMM
+
+Already starting with N_consecutive_crash_success...
+
+Varying intercepts for **ID**:
+```{julia}
+#| label: m_varyingInt1
+
+m_varyingInt1 = let
+    varInt = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success
+    + (1 | ID));
+    fit(MixedModel, varInt, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingInt1) # Not overparamterized
+#VarCorr(m_varyingInt1)
+#last(m_varyingInt1.λ)
+
+```
+The random intercept model hints towards ID being a valid random effect. Proceeding by including random slope effects.
+
+### Most complex model
+Simply dumping all fixed effect terms into the random effects structure.
+```{julia}
+#| label: m_varyingSlope_complex
+
+m_varyingSlope_complex = let
+    varSlope = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success 
+    + (1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success | ID));
+    fit(MixedModel, varSlope, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingSlope_complex) # overparamterized
+```
+The model is too complex. Will start by stating zero correlation:
+
+```{julia}
+#| label: m_varyingSlope_complex_zc
+
+m_varyingSlope_complex_zc = let
+    varSlope = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success 
+    + zerocorr(1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success | ID));
+    fit(MixedModel, varSlope, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingSlope_complex_zc) # overparamterized
+```
+Still detecting singularity.
+
+Starting to delete single random slope effects while keeping zerocorr... 
+
+```{julia}
+#| label: m_varyingSlope_test
+
+m_varyingSlope_test = let
+    varSlope = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success 
+    + zerocorr(1 + done + block | ID));
+    fit(MixedModel, varSlope, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingSlope_test) # overparamterized
+```
+
+Any combination does not work. We will build models with single random slope effects and see if they converge.
+
+### single random slope models
+
+```{julia}
+#| label: m_varyingSlope_zc_ncs
+
+m_varyingSlope_zc_ncs = let
+    varSlope = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success 
+    + zerocorr(1 + N_consecutive_crash_success | ID));
+    fit(MixedModel, varSlope, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingSlope_zc_ncs) # Overparamterized
+```
+
+```{julia}
+#| label: m_varyingSlope_zc_done
+
+m_varyingSlope_zc_done = let
+    varSlope = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success 
+    + zerocorr(1 + done | ID));
+    fit(MixedModel, varSlope, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingSlope_zc_done) # Overparamterized
+```
+
+```{julia}
+#| label: m_varyingSlope_zc_ld
+
+m_varyingSlope_zc_ld = let
+    varSlope = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success 
+    + zerocorr(1 + level_difficulty | ID));
+    fit(MixedModel, varSlope, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingSlope_zc_ld) # Overparamterized
+```
+This one works! We will test it against the random intercept model.
+
+```{julia}
+
+gof_summary = let
+  nms = [:m_varyingInt1, :m_varyingSlope_zc_ld]
+  mods = eval.(nms)
+  lrt = MixedModels.likelihoodratiotest(m_varyingInt1, m_varyingSlope_zc_ld)
+  DataFrame(;
+    name = nms, 
+    dof=dof.(mods),
+    deviance=round.(deviance.(mods), digits=0),
+    AIC=round.(aic.(mods),digits=0),
+    AICc=round.(aicc.(mods),digits=0),
+    BIC=round.(bic.(mods),digits=0),
+    χ²=vcat(:., round.(lrt.tests.deviancediff, digits=0)),
+    χ²_dof=vcat(:., round.(lrt.tests.dofdiff, digits=0)),
+    pvalue=vcat(:., round.(lrt.tests.pvalues, digits=3))
+  )
+end
+
+```
+BIC=320.0 vs BIC=313.0, m_varyingInt1 wins. 
+
+```{julia}
+#| label: m_varyingSlope_zc_blk
+
+m_varyingSlope_zc_blk = let
+    varSlope = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success 
+    + zerocorr(1 + block | ID));
+    fit(MixedModel, varSlope, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingSlope_zc_blk) # Overparamterized
+```
+
+```{julia}
+#| label: m_varyingSlope_zc_nf
+
+m_varyingSlope_zc_nf = let
+    varSlope = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success 
+    + zerocorr(1 + N_fixations | ID));
+    fit(MixedModel, varSlope, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingSlope_zc_nf) # Overparamterized
+```
+
+m_varyingSlope_zc_ld was the only one that converged. But it still fits less good to the data than m_varyingInt1. We will thus proceed with m_varyingInt1.
+
+## Model selection
+```{julia}
+#| label: m_varyingInt1
+
+m_varyingInt1 = let
+    varSlope = @formula(SoC ~ 1 + done + level_difficulty + block + N_fixations + N_consecutive_crash_success 
+    + (1 | ID));
+    fit(MixedModel, varSlope, my_data; contrasts=my_cake);
+  end
+
+```
+
+## Bootstrapping
+```{julia}
+samples = parametricbootstrap(RNG, N_iterations, m_varyingInt1)
+tbl = samples.tbl
+```
+
+```{julia}
+confint(samples)
+```
+
+Visualizing 95% CIs individually for every covariate.
+```{julia}
+ridgeplot(samples; show_intercept=false, xlabel="Bootstrap density and 95%CI", title="SoC judgements")
+```
+
+**Discussing the results:** We find significant effects for (stating 95% CIs):
+- done (1.45918, 1.53154)
+- ...
+
+### Frome these findings, we will only report done and will further include this covariate as random effect.
+
+# Including DONE as random effect because we are not interested in variance caused by success
+random effects coding
+```{julia}
+
+my_cake = Dict(
+  :ID => Grouping(),
+  :done => Grouping()
+);
+
+```
+
+only random intercept model
+```{julia}
+#| label: m_varyingInt1
+
+m_varyingInt1 = let
+    varInt = @formula(SoC ~ 1 + level_difficulty + input_noise + N_fixations + N_consecutive_crash_success 
+    + (1 | ID)
+    + (1 | done));
+    fit(MixedModel, varInt, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingInt1) # Not overparamterized
+#VarCorr(m_varyingInt1)
+#last(m_varyingInt1.λ)
+
+```
+done is suitable for a random effect. Next up, exploring random slopes.
+
+## Exploring random slope effects
+```{julia}
+#| label: m_varyingSlope1
+
+m_varyingSlope1 = let
+    varSlop = @formula(SoC ~ 1 + level_difficulty + input_noise + N_fixations + N_consecutive_crash_success
+    + (1 | ID)
+    + (1 | done));
+    fit(MixedModel, varSlop, my_data; contrasts=my_cake);
+  end
+
+issingular(m_varyingSlope1) # Not overparamterized
+
+```
+...
+## Model selection
+```{julia}
+#| label: m_varyingInt1
+
+m_varyingInt1 = let
+    varInt = @formula(SoC ~ 1 + level_difficulty + input_noise + N_fixations + N_consecutive_crash_success 
+    + (1 | ID)
+    + (1 | done));
+    fit(MixedModel, varInt, my_data; contrasts=my_cake);
+  end
+
+```
+
+```{julia}
+samples = parametricbootstrap(RNG, N_iterations, m_varyingInt1)
+tbl = samples.tbl
+```
+
+```{julia}
+confint(samples)
+```
+
+Visualizing 95% CIs individually for every covariate.
+```{julia}
+ridgeplot(samples; show_intercept=false, xlabel="Bootstrap density and 95%CI", title="SoC judgements")
+```
+
+**Discussing the results:** We find significant effects for (stating 95% CIs):
+
+### with N_fixations & N_saccades:
+- input_noise (-1.05016, -0.637036)
