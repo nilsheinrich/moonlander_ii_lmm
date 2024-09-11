@@ -47,6 +47,7 @@ using DataFrameMacros
 using MixedModels
 using MixedModelsMakie
 using Random
+using CategoricalArrays
 #using RCall
 
 CairoMakie.activate!(; type="svg");
@@ -77,6 +78,17 @@ describe(my_data)
 
 ### Contrasts
 
+Reordering level_difficulty first:
+```{julia}
+
+level_difficulty_col = categorical(my_data.level_difficulty)
+
+levels!(level_difficulty_col, ["medium", "hard"])
+
+my_data.level_difficulty = level_difficulty_col
+
+```
+
 We will declare **ID** a grouping variable as well as define the effects coding for the discrete covariate input noise.
 
 #### Hypothesis Coding
@@ -84,6 +96,14 @@ We will declare **ID** a grouping variable as well as define the effects coding 
 
 my_cake = Dict(
   :ID => Grouping(),
+  :block => HypothesisCoding(
+    [
+      -1 +1 0
+      -1 0 +1
+    ];
+    levels=["no_drift", "fake", "invisible"],
+    labels=["fake-none", "invisible-none"],
+  ),
 );
 
 ```
@@ -140,7 +160,6 @@ issingular(m_varyingSlope_complex_zc) # overparamterized
 Still detecting singularity.
 
 Starting to delete single random slope effects while keeping zerocorr... 
-
 ```{julia}
 #| label: m_varyingSlope_test
 
@@ -178,8 +197,9 @@ m_varyingSlope_zc_done = let
     fit(MixedModel, varSlope, my_data; contrasts=my_cake);
   end
 
-issingular(m_varyingSlope_zc_done) # Overparamterized
+issingular(m_varyingSlope_zc_done) # Not overparamterized
 ```
+This one works!
 
 ```{julia}
 #| label: m_varyingSlope_zc_ld
@@ -192,14 +212,14 @@ m_varyingSlope_zc_ld = let
 
 issingular(m_varyingSlope_zc_ld) # Overparamterized
 ```
-This one works! We will test it against the random intercept model.
+This one is singular again.
 
 ```{julia}
 
 gof_summary = let
-  nms = [:m_varyingInt1, :m_varyingSlope_zc_ld]
+  nms = [:m_varyingInt1, :m_varyingSlope_zc_done]
   mods = eval.(nms)
-  lrt = MixedModels.likelihoodratiotest(m_varyingInt1, m_varyingSlope_zc_ld)
+  lrt = MixedModels.likelihoodratiotest(m_varyingInt1, m_varyingSlope_zc_done)
   DataFrame(;
     name = nms, 
     dof=dof.(mods),
@@ -214,7 +234,7 @@ gof_summary = let
 end
 
 ```
-BIC=320.0 vs BIC=313.0, m_varyingInt1 wins. 
+BIC=226.0 vs BIC=219.0, m_varyingInt1 wins.
 
 ```{julia}
 #| label: m_varyingSlope_zc_blk
@@ -240,7 +260,7 @@ m_varyingSlope_zc_nf = let
 issingular(m_varyingSlope_zc_nf) # Overparamterized
 ```
 
-m_varyingSlope_zc_ld was the only one that converged. But it still fits less good to the data than m_varyingInt1. We will thus proceed with m_varyingInt1.
+m_varyingSlope_zc_done was the only one that converged. But it still fits worse to the data than m_varyingInt1. We will thus proceed with m_varyingInt1.
 
 ## Model selection
 ```{julia}
@@ -270,7 +290,7 @@ ridgeplot(samples; show_intercept=false, xlabel="Bootstrap density and 95%CI", t
 ```
 
 **Discussing the results:** We find significant effects for (stating 95% CIs):
-- done (1.45918, 1.53154)
+- done (1.44125, 1.511)
 - ...
 
 ### Frome these findings, we will only report done and will further include this covariate as random effect.
@@ -281,7 +301,15 @@ random effects coding
 
 my_cake = Dict(
   :ID => Grouping(),
-  :done => Grouping()
+  :done => Grouping(),
+  :block => HypothesisCoding(
+    [
+      -1 +1 0
+      -1 0 +1
+    ];
+    levels=["no_drift", "fake", "invisible"],
+    labels=["fake-none", "invisible-none"],
+  ),
 );
 
 ```
@@ -348,10 +376,9 @@ ridgeplot(samples; show_intercept=false, xlabel="Bootstrap density and 95%CI", t
 ```
 
 **Discussing the results:** We find significant effects for (stating 95% CIs):
-
 ### with N_fixations & N_saccades:
-- level_difficulty (0.132289, 0.198125)
-- block: invisible vs. normal (-0.677625, -0.597058)
-- block: no_drift vs. normal (0.00239709, 0.0861937)
-- N_fixations (0.000437163, 0.000739854)
-- N_consecutive_crash_success (0.0241084, 0.031886)
+- level_difficulty:hard (-0.22199, -0.159012)
+- No significance for block: fake vs. normal (-0.0767441, 0.00326358)
+- block: invisible vs. normal (-0.727074, -0.649873)
+- N_fixations (0.00050266, 0.000798721)
+- N_consecutive_crash_success (0.0297135, 0.0373815)
