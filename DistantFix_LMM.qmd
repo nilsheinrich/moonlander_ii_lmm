@@ -340,7 +340,7 @@ ridgeplot(samples; show_intercept=false, xlabel="Bootstrap density and 95%CI", t
 
 # Modeling fixation location - distance to spaceship
 
-# Testing random effects
+## Testing random effects
 
 ```{julia}
 #| label: m_varyingInt_
@@ -569,7 +569,7 @@ We will proceed with m_varyingSlope_zc_in for hypothesis testing
 #| label: selected model
 
 m_varyingSlope_zc_in = let
-    varSlop = @formula(1/distance_to_spaceship ~ 1 + N_visible_obstacles * N_visible_drift_tiles + block + 
+    varSlop = @formula(1/distance_to_spaceship ~ 1 + N_visible_obstacles + N_visible_drift_tiles * block + 
     zerocorr(1 + N_visible_obstacles + N_visible_drift_tiles * block | ID));
     fit(MixedModel, varSlop, my_data; contrasts=my_cake);
   end
